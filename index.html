@@ -25,7 +25,7 @@
     import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
     // Firestoreのデバッグレベルを設定
-    setLogLevel('debug');
+    setLogLevel('silent'); // エラー以外は静かにする
     
     // **お客様提供のFirebase設定**
     const firebaseConfig = {
@@ -38,25 +38,28 @@
       measurementId: "G-K392B89CXK"
     };
 
-    // Firebase初期化
-    let db, auth;
-    // 初期化済みフラグ
-    window.isFirebaseInitialized = false;
+    // Firebase初期化関数 (Promiseを返す)
+    window.initFirebase = async () => {
+      try {
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+        
+        // グローバルに公開
+        window.db = db;
+        window.auth = auth;
+        window.AuthFunctions = { signInAnonymously, signInWithCustomToken };
+        window.Firestore = { collection, getDocs, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp };
+        
+        return { db, auth };
+      } catch (e) {
+        console.error("Firebase Init Error:", e);
+        throw e;
+      }
+    };
 
-    try {
-      const app = initializeApp(firebaseConfig);
-      db = getFirestore(app);
-      auth = getAuth(app);
-      window.isFirebaseInitialized = true;
-    } catch (e) {
-      console.error("Firebase Init Error:", e);
-    }
-
-    // Expose to window
-    window.db = db;
-    window.auth = auth;
-    window.AuthFunctions = { signInAnonymously, signInWithCustomToken };
-    window.Firestore = { collection, getDocs, addDoc, deleteDoc, doc, onSnapshot, query, orderBy, serverTimestamp };
+    // 初期化プロセスを開始し、プロミスを保持
+    window.firebasePromise = window.initFirebase();
   </script>
 
   <style>
@@ -100,9 +103,9 @@
   <script type="text/babel">
     const { useState, useEffect, useRef } = React;
 
-    // --- 設定値 (Reactスコープ内で定義) ---
+    // --- 設定値 ---
     const appId = 'machigaisagashi-fdc81'; // Firestoreのデータパスに使用
-    const ADMIN_PASSWORD = "admin"; // 管理者モードのパスワード
+    const ADMIN_PASSWORD = "admin9876"; // ★変更: 管理者モードのパスワード
 
     // --- Icons Definitions ---
     const Icons = {
@@ -232,24 +235,36 @@
       useEffect(() => {
         if (!window.auth) return;
 
-        // Initialize Auth Listener first
-        const unsubscribe = window.auth.onAuthStateChanged((user) => {
-            if (!isAuthReady) {
+        // Promise to ensure Firebase initialization is done
+        const waitForFirebase = async () => {
+            if (window.firebasePromise) {
+                try {
+                    await window.firebasePromise;
+                } catch (e) {
+                    console.error("Firebase wait failed:", e);
+                }
+            }
+        };
+
+        waitForFirebase().then(() => {
+            const unsubscribe = window.auth.onAuthStateChanged((user) => {
+                if (!isAuthReady) {
+                    setIsAuthReady(true);
+                }
+            });
+
+            // Attempt Anonymous Sign-in
+            window.AuthFunctions.signInAnonymously(window.auth).catch((error) => {
+                console.error("Auth Error Catch:", error);
+                if (error.code === 'auth/configuration-not-found' || error.code === 'auth/admin-restricted-operation') {
+                  setAuthError(true);
+                  setAuthErrorDetails(error.code);
+                }
                 setIsAuthReady(true);
-            }
-        });
+            });
 
-        // Attempt Anonymous Sign-in
-        window.AuthFunctions.signInAnonymously(window.auth).catch((error) => {
-            console.error("Auth Error Catch:", error);
-            if (error.code === 'auth/configuration-not-found' || error.code === 'auth/admin-restricted-operation') {
-              setAuthError(true);
-              setAuthErrorDetails(error.code);
-            }
-            setIsAuthReady(true);
+            return () => unsubscribe();
         });
-
-        return () => unsubscribe();
       }, []);
 
       // 2. Firebase Sync
@@ -346,7 +361,7 @@
 
       const handleAdminAuth = (e) => {
         e.preventDefault();
-        if (adminPasswordInput === 'admin') {
+        if (adminPasswordInput === ADMIN_PASSWORD) {
           setIsAdmin(true);
           setShowAdminInput(false);
           setAdminPasswordInput('');
