@@ -263,8 +263,17 @@
         try {
           const qLevels = query(collection(window.db, `artifacts/${appId}/public/data/problems`)); 
           const unsubLevels = onSnapshot(qLevels, (snapshot) => {
-            let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            let data = snapshot.docs.map(doc => {
+                const d = doc.data();
+                return { 
+                    id: doc.id, 
+                    ...d,
+                    // マーカー情報のパース処理を追加
+                    markers: d.markersJSON ? JSON.parse(d.markersJSON) : (d.markers || []) 
+                };
+            });
             data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+            
             setLevels(data);
             setDbError(false); 
           }, (error) => {
@@ -400,7 +409,7 @@
                          <span className="text-xs font-bold text-slate-400 flex items-center gap-1"><Icons.Play size={12} fill="currentColor" /> PLAY</span>
                          {isAdmin && (
                             <div className="flex gap-2" onClick={e => e.stopPropagation()}>
-                              <button onClick={() => deleteLevel(level.id, e)} className="text-slate-400 hover:text-red-500 bg-slate-50 p-1.5 rounded-md hover:bg-red-50 transition-colors"><Icons.Trash2 size={16} /></button>
+                              <button onClick={(e) => deleteLevel(level.id, e)} className="text-slate-400 hover:text-red-500 bg-slate-50 p-1.5 rounded-md hover:bg-red-50 transition-colors"><Icons.Trash2 size={16} /></button>
                             </div>
                          )}
                       </div>
