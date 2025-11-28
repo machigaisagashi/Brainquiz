@@ -4,6 +4,10 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>脳トレまちがいさがし</title>
+
+  <!-- Google AdSense -->
+  <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8804791239408179"
+     crossorigin="anonymous"></script>
   
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -234,8 +238,11 @@
       const [showAdminInput, setShowAdminInput] = useState(false); 
       const [adminPasswordInput, setAdminPasswordInput] = useState('');
       const [isAuthReady, setIsAuthReady] = useState(false);
+      const [dbError, setDbError] = useState(false);
+      const [authError, setAuthError] = useState(false);
+      const [authErrorDetails, setAuthErrorDetails] = useState(''); 
 
-      // Auth Logic
+      // 1. Auth Logic
       useEffect(() => {
         if (!window.auth) return;
 
@@ -247,13 +254,17 @@
 
         window.AuthFunctions.signInAnonymously(window.auth).catch((error) => {
             console.error("Auth Error Catch:", error);
+            if (error.code === 'auth/configuration-not-found' || error.code === 'auth/admin-restricted-operation') {
+              setAuthError(true);
+              setAuthErrorDetails(error.code);
+            }
             setIsAuthReady(true);
         });
 
         return () => unsubscribe();
       }, []);
 
-      // Firebase Sync
+      // 2. Firebase Sync
       useEffect(() => {
         if (!window.db || !isAuthReady) return;
         
@@ -272,6 +283,12 @@
             });
             data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             setLevels(data);
+            setDbError(false); 
+          }, (error) => {
+            console.log("Firestore Error (Levels):", error);
+            if (error.code === 'not-found' || error.code === 'permission-denied') {
+              setDbError(true);
+            }
           });
 
           const qNews = query(collection(window.db, `artifacts/${appId}/public/data/news`));
@@ -279,6 +296,8 @@
             let data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
             data.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
             setNews(data);
+          }, (error) => {
+             console.log("Firestore Error (News):", error);
           });
 
           return () => { unsubLevels(); unsubNews(); };
@@ -289,16 +308,39 @@
 
       // Loading State
       if (!isAuthReady) {
-         return (
-             <div className="flex items-center justify-center min-h-screen bg-[#F9FAFB] bg-grid-pattern">
-                <div className="text-center text-slate-500">
-                    <Icons.RotateCcw className="w-8 h-8 mx-auto animate-spin" />
-                    <p className="mt-2 font-bold font-hand">接続中...</p>
-                </div>
-             </div>
-         );
+         if (window.isFirebaseInitialized && !authError && !dbError) {
+             return (
+                 <div className="flex items-center justify-center min-h-screen bg-[#F9FAFB] bg-grid-pattern">
+                    <div className="text-center text-slate-500">
+                        <Icons.RotateCcw className="w-8 h-8 mx-auto animate-spin" />
+                        <p className="mt-2 font-bold font-hand">接続中...</p>
+                    </div>
+                 </div>
+             );
+         }
       }
       
+      if (dbError || authError) {
+        return (
+          <div className="fixed inset-0 bg-slate-900/90 flex items-center justify-center z-50 p-4 text-white">
+            <div className="bg-slate-800 p-8 rounded-2xl max-w-lg w-full border-2 border-red-500 shadow-2xl">
+              <div className="flex items-center gap-3 mb-6 text-red-400">
+                <Icons.AlertCircle size={40} />
+                <h1 className="text-2xl font-bold">初期設定が必要です</h1>
+              </div>
+              <p className="mb-4 text-slate-300">Firebaseコンソールで設定を確認してください。</p>
+              <div className="space-y-6">
+                {authError && <div className="bg-black/30 p-4 rounded-lg border border-slate-600"><h2 className="text-yellow-400 font-bold flex items-center gap-2 mb-2"><Icons.Key size={20} /> 認証(Auth)エラー ({authErrorDetails})</h2><p className="text-sm text-slate-400">Authenticationの「匿名(Anonymous)」プロバイダを有効にしてください。</p></div>}
+                {dbError && <div className="bg-black/30 p-4 rounded-lg border border-slate-600"><h2 className="text-yellow-400 font-bold flex items-center gap-2 mb-2"><Icons.Database size={20} /> データベースエラー</h2><p className="text-sm text-slate-400">Firestore Databaseを作成し、セキュリティルール(テストモード)を設定してください。</p></div>}
+              </div>
+              <div className="mt-8 text-center">
+                <button onClick={() => window.location.reload()} className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-full font-bold transition-colors shadow-lg">再読み込み</button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       const deleteLevel = async (id, e) => {
         e.stopPropagation();
         if (!window.db) return;
