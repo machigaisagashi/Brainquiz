@@ -240,7 +240,9 @@
       const [isAuthReady, setIsAuthReady] = useState(false);
       const [dbError, setDbError] = useState(false);
       const [authError, setAuthError] = useState(false);
-      const [authErrorDetails, setAuthErrorDetails] = useState(''); 
+      const [authErrorDetails, setAuthErrorDetails] = useState('');
+      // State to hold the previous page when returning from a game
+      const [homeCurrentPage, setHomeCurrentPage] = useState(1);
 
       // 1. Auth Logic
       useEffect(() => {
@@ -268,7 +270,7 @@
       useEffect(() => {
         if (!window.db || !isAuthReady) return;
         
-        const { collection, onSnapshot, query } = window.Firestore;
+        const { collection, onSnapshot, query, orderBy } = window.Firestore;
         
         try {
           const qLevels = query(collection(window.db, `artifacts/${appId}/public/data/problems`)); 
@@ -402,8 +404,7 @@
         }
       };
 
-      const HomeView = () => {
-        const [currentPage, setCurrentPage] = useState(1);
+      const HomeView = ({ currentPage, setCurrentPage }) => {
         const totalPages = Math.ceil(levels.length / PROBLEMS_PER_PAGE);
         const startIndex = (currentPage - 1) * PROBLEMS_PER_PAGE;
         const currentLevels = levels.slice(startIndex, startIndex + PROBLEMS_PER_PAGE);
@@ -638,7 +639,7 @@
               <div className="max-w-4xl mx-auto px-4 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-blue-600 cursor-pointer" onClick={() => setView('home')}>
                    <Icons.ArrowLeft size={24} />
-                   <h1 className="text-xl font-black font-hand">おしらせ一覧</h1>
+                   <h1 className="text-xl font-black font-hand">もどる</h1>
                 </div>
               </div>
             </header>
@@ -784,7 +785,10 @@
                   </div>
                 </div>
                 <div className="w-full max-w-lg bg-white p-3 rounded-2xl border-4 border-pink-300 shadow-xl" onClick={handleImageClick}>
-                  <div className="mb-2 bg-pink-500 text-white text-xs font-black px-3 py-1 rounded-full w-max">間違い</div>
+                  <div className="mb-2 flex justify-between items-center">
+                    <div className="bg-pink-500 text-white text-xs font-black px-3 py-1 rounded-full w-max">間違い</div>
+                    <div className="text-pink-500 text-xs font-bold animate-pulse">間違っている箇所をタップしてね</div>
+                  </div>
                   <div className="relative aspect-square bg-slate-50 rounded-xl overflow-hidden cursor-crosshair">
                     <img ref={imgRef} src={level.imgDiff} className="w-full h-full object-contain" />
                     {level.markers.map(diff => foundIds.includes(diff.id) && <div key={diff.id} className="absolute border-[4px] border-pink-500 rounded-full" style={{left:`${diff.x}%`,top:`${diff.y}%`,width:`${(diff.radius || 5)*2}%`,height:`${(diff.radius || 5)*2}%`,transform:'translate(-50%,-50%)',aspectRatio:'1/1'}}><div className="absolute -top-3 -right-3 bg-pink-500 text-white rounded-full p-1"><Icons.CheckCircle size={16}/></div></div>)}
@@ -799,7 +803,7 @@
                   <div className="w-24 h-24 bg-yellow-300 text-slate-900 rounded-full flex items-center justify-center mx-auto mb-6 border-4 border-slate-800"><Icons.Trophy size={48} fill="white"/></div>
                   <h3 className="text-3xl font-black text-slate-800 mb-2 font-hand">CLEAR!!</h3>
                   <div className="text-xl font-bold text-blue-600 mb-6">タイム: {formatTime(time)}</div>
-                  <button onClick={() => setView('home')} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-black mt-6">一覧にもどる</button>
+                  <button onClick={() => setView('home')} className="w-full bg-blue-500 hover:bg-blue-600 text-white py-3 rounded-xl font-black mt-6">もどる</button>
                 </div>
               </div>
             )}
@@ -924,7 +928,7 @@
         );
       };
 
-      if (view === 'home') return <HomeView />;
+      if (view === 'home') return <HomeView currentPage={homeCurrentPage} setCurrentPage={setHomeCurrentPage} />;
       if (view === 'news') return <NewsView />;
       if (view === 'play') return <PlayView />;
       if (view === 'create') return <CreateView />;
